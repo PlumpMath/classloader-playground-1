@@ -4,11 +4,11 @@ import Process._
 import sbtassembly.Plugin._
 import AssemblyKeys._
 
-object MiniboxingBuild extends Build {
+object ClassloaderBuild extends Build {
 
   val scalaVer = "2.10.1-SNAPSHOT"
 
-  val defaults = Defaults.defaultSettings ++ assemblySettings ++ Seq(
+  val defaultSettings = Defaults.defaultSettings ++ assemblySettings ++ Seq(
     scalaVersion := scalaVer,
     scalaBinaryVersion := "2.10",
     scalaSource in Compile <<= baseDirectory(_ / "src"),
@@ -35,12 +35,13 @@ object MiniboxingBuild extends Build {
       "org.scalacheck" %% "scalacheck" % "1.10.0" % "test",
       "org.ow2.asm" % "asm" % "4.0",
       "org.ow2.asm" % "asm-tree" % "4.0",
+      "org.ow2.asm" % "asm-util" % "4.0",
+      "org.ow2.asm" % "asm-analysis" % "4.0",
       "com.novocode" % "junit-interface" % "0.10-M2" % "test"
-    ),
-    parallelExecution in Test := false
+    )
   )
 
   lazy val _classloader = Project(id = "classloader",        base = file(".")) aggregate (loader, tests)
-  lazy val loader       = Project(id = "classloader-loader", base = file("components/loader"), settings = defaults)
-  lazy val tests        = Project(id = "classloader-test",   base = file("components/test"),   settings = defaults)
+  lazy val loader       = Project(id = "classloader-loader", base = file("components/loader"), settings = defaultSettings)
+  lazy val tests        = Project(id = "classloader-test",   base = file("components/test"),   settings = defaultSettings) dependsOn(loader)
 }
