@@ -16,11 +16,9 @@ import org.objectweb.asm.tree.analysis.BasicVerifier
 /** Taken from http://stackoverflow.com/questions/6366288/how-to-change-default-class-loader-in-java */
 class SpecializingClassloader(parent: ClassLoader) extends ClassLoader(parent) {
 
-  def needsModifying(name: String): Boolean = {
-    val result = name.endsWith("Target_1")
-    System.err.println("[classloader] needsModifying: " + name + " : "  + result)
-    result
-  }
+  def needsModifying(name: String): Boolean =
+    // TODO: Extend to more parameters
+    name.matches(".*_[0-9]$")
 
   def modifyClass(in: InputStream, oldname: String, newname: String): Array[Byte] = {
     val cr = new ClassReader(in)
@@ -29,11 +27,13 @@ class SpecializingClassloader(parent: ClassLoader) extends ClassLoader(parent) {
 
     classNode.name = newname
 
-//    val fieldNodes = classNode.fields.asInstanceOf[JList[FieldNode]].asScala
-//    for (fieldNode <- fieldNodes if fieldNode.name.endsWith("$Type")) {
-//      fieldNode.access |= Opcodes.ACC_STATIC;
-//      fieldNode.value = new Integer(1)
-//    }
+    // Make the type tags static final
+    val fieldNodes = classNode.fields.asInstanceOf[JList[FieldNode]].asScala
+    for (fieldNode <- fieldNodes if fieldNode.name.endsWith("$Type")) {
+      fieldNode.access |= Opcodes.ACC_STATIC | Opcodes.ACC_FINAL;
+      // TODO: Extend to more parameters, this only supports one
+      fieldNode.value = new Integer(newname.last.toInt - '0'.toInt)
+    }
 
     // Patch all the methods
     val methodNodes = classNode.methods.asInstanceOf[JList[MethodNode]].asScala
@@ -41,27 +41,32 @@ class SpecializingClassloader(parent: ClassLoader) extends ClassLoader(parent) {
       val insnNodes = methodNode.instructions.iterator().asInstanceOf[ListIterator[AbstractInsnNode]]
       while (insnNodes.hasNext) {
         insnNodes.next match {
-//          case finsn: FieldInsnNode if (finsn.name.endsWith("_TypeTag")) =>
-//            finsn.getOpcode match {
-//              case Opcodes.GETFIELD =>
-//                insnNodes.set(new InsnNode(Opcodes.POP));
-//                insnNodes.add(new FieldInsnNode(Opcodes.GETSTATIC, finsn.owner, finsn.name, finsn.desc))
-//              case Opcodes.PUTFIELD =>
-//                insnNodes.set(new InsnNode(Opcodes.POP2));
-//            }
           case finst: FieldInsnNode =>
+            // update owner to the new class
             finst.owner = finst.owner.replace(oldname, newname) // update names everywhere
+            // and patch the code for the static final value
+            if (finst.name.endsWith("$Type")) {
+              finst.getOpcode match {
+                case Opcodes.GETFIELD =>
+                  insnNodes.set(new InsnNode(Opcodes.POP));
+                  insnNodes.add(new FieldInsnNode(Opcodes.GETSTATIC, finst.owner, finst.name, finst.desc))
+                case Opcodes.PUTFIELD =>
+                  insnNodes.set(new InsnNode(Opcodes.POP2));
+              }
+            }
           case minst: MethodInsnNode =>
+            // update owner to the new class
             minst.owner = minst.owner.replace(oldname, newname) // update names everywhere
           case _ =>
         }
       }
     }
 
+    // Debugging:
 //    val printWriter = new PrintWriter(System.err);
 //    val traceClassVisitor = new TraceClassVisitor(printWriter);
 //    classNode.accept(traceClassVisitor);
-
+//
 //    val analyzer = new Analyzer(new BasicVerifier)
 //    for (methodNode <- methodNodes) {
 //      analyzer.analyze(name, methodNode)
@@ -74,23 +79,24 @@ class SpecializingClassloader(parent: ClassLoader) extends ClassLoader(parent) {
     classBytes
   }
 
-  override def findClass(name: String): Class[_] = {
-    if (needsModifying(name)) {
+  override def findClass(decodedName: String): Class[_] = {
+    if (needsModifying(decodedName)) {
       try {
-        val className = name.replace('.', '/')
-        val classTpl = className.replaceAll("1", "J")
-        val classData = super.getResourceAsStream(classTpl + ".class");
-        if (classData == null) {
-          throw new ClassNotFoundException("class " + classTpl + " is not findable");
+        val encodedName = decodedName.replace('.', '/')
+        // TODO: Extend to more parameters
+        val encodedTplName = encodedName.replaceAll("_[0-9]$", "_J")
+        val templateBytes = super.getResourceAsStream(encodedTplName + ".class");
+        if (templateBytes == null) {
+          throw new ClassNotFoundException("Class " + encodedTplName + " not found. Sorry.");
         }
-        val array = modifyClass(classData, classTpl, className);
-        return defineClass(name, array, 0, array.length);
+        val array = modifyClass(templateBytes, encodedTplName, encodedName);
+        return defineClass(decodedName, array, 0, array.length);
       } catch {
         case io: IOException =>
           throw new ClassNotFoundException(io.toString);
       }
     } else {
-      return super.findClass(name);
+      return super.findClass(decodedName);
     }
   }
 }

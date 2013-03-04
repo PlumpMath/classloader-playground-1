@@ -41,7 +41,7 @@ object ClassloaderBuild extends Build {
     )
   )
 
-  lazy val _classloader = Project(id = "classloader",        base = file(".")) aggregate (loader, tests)
-  lazy val loader       = Project(id = "classloader-loader", base = file("components/loader"), settings = defaultSettings)
-  lazy val tests        = Project(id = "classloader-test",   base = file("components/test"),   settings = defaultSettings) dependsOn(loader)
+  lazy val _classloader = Project(id = "classloader-playground",        base = file(".")) aggregate (loader, tests)
+  lazy val loader       = Project(id = "classloader-playground-loader", base = file("components/loader"), settings = defaultSettings)
+  lazy val tests        = Project(id = "classloader-playground-test",   base = file("components/test"),   settings = defaultSettings) dependsOn(loader)
 }
